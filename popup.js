@@ -257,12 +257,18 @@ getCurrentTab().then(tab => {
                         /** @type {Message[]} */
                         const messages = results[0].result;
 
-                        for (const message of messages) {
-                            // Avoid duplicates
-                            if (!state.savedMessages.some(m => m.id === message.id)) {
-                                state.savedMessages.push(message);
-                            }
+                        const map = {};
+
+                        for (const message of state.savedMessages) {
+                            map[message.id] = message;
                         }
+
+                        // Update duplicates
+                        for (const message of messages) {
+                            map[message.id] = message;
+                        }
+
+                        state.savedMessages = Object.values(map);
 
                         state.savedMessageCount = state.savedMessages.length;
 
@@ -320,7 +326,9 @@ function downloadMessages(messages, format, zipped) {
         const mboxList = [];
 
         for (const message of messages) {
-            mboxList.push(`From ${fromAddr} ${asctime(new Date(message.date))}\n${makeMessage(message)}`);
+            const thread = getThread(message, messages);
+
+            mboxList.push(`From ${fromAddr} ${asctime(new Date(message.date))}\n${makeMessage(message, thread)}`);
         }
 
         const mbox = mboxList.join("\n\n");
@@ -344,17 +352,55 @@ function downloadMessages(messages, format, zipped) {
 
 /**
  * @param {Message} message
+ * @param {Message[]} messages
  */
-function makeMessage (message) {
+function getThread (message, messages) {
+    let project;
+    if (message.subject.startsWith("Project Update - ")) {
+        project = message.subject.substring(17);
+    }
+    else if (message.subject.startsWith("Project Repayment - ")) {
+        project = message.subject.substring(20);
+    }
+    else if (message.subject.startsWith("Partial Repayment - ")) {
+        project = message.subject.substring(20);
+    }
+
+    if (project) {
+        const msgs = messages
+            .filter(m => m.subject.includes(project))
+            .filter(m => m.date < message.date);
+
+        return msgs.sort((a, b) => a.date.localeCompare(b.date));
+    }
+
+    return [];
+}
+
+function getMessageID (message) {
+    return `<message-${message.id}@crowdproperty.com>`;
+}
+
+/**
+ * @param {Message} message
+ * @param {Message[]} thread
+ */
+function makeMessage (message, thread) {
     const subject = message.subject.replace(/\n/g, "");
+
+    let threadHeaders = "";
+    if (thread.length > 0) {
+        threadHeaders += `References: ${thread.map(m => getMessageID(m)).join(" ")}\n`;
+        threadHeaders += `In-Reply-To: ${getMessageID(thread[thread.length - 1])}\n`;
+    }
 
     return `MIME-Version: 1.0
 Date: ${rfc2822UTC(new Date(message.date))}
 From: CrowdProperty <${fromAddr}>
-Message-ID: <message-${message.id}@crowdproperty.com>
+Message-ID: ${getMessageID(message)}
 Subject: ${subject}
 Thread-Topic: ${subject}
-X-Mozilla-Status: ${message.read?"0001":"0000"}
+${threadHeaders}X-Mozilla-Status: ${message.read?"0001":"0000"}
 Content-Transfer-Encoding: quoted-printable
 Content-Type: text/html; charset="utf-8"
 
