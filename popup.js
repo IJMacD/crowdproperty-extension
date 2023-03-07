@@ -1,15 +1,67 @@
 const h1 = document.querySelector("h1");
+const statusTxt = document.getElementById("status");
+const savedStatusTxt = document.getElementById("saved-status");
 const divIntro = document.getElementById("intro");
 const divMultiple = document.getElementById("download-multiple");
 const divSingle = document.getElementById("download-single");
 const btnEmlZip = document.getElementById("download-eml-zip");
 const btnMboxZip = document.getElementById("download-mbox-zip");
 const btnMbox = document.getElementById("download-mbox");
+const btnCsvZip = document.getElementById("download-csv-zip");
+const btnCsv = document.getElementById("download-csv");
 const btnEml = document.getElementById("download-eml");
+const btnSave = /** @type {HTMLButtonElement?} */(document.getElementById("save-page"));
+const form = document.forms[0];
+const fieldSet = document.querySelector("fieldset");
+
+form.addEventListener("change", renderUI);
 
 const cpInbox = 'https://www.crowdproperty.com/account/messaging';
 const cpInboxSingle = /https:\/\/www.crowdproperty.com\/account\/messaging\/(\d+)/;
 const fromAddr = "website@crowdproperty.com";
+
+const SAVE_KEY = "cpe.savedMessages";
+
+const state = {
+    pageMessageCount: 0,
+    savedMessageCount: 0,
+    /** @type {Message[]} */
+    savedMessages: [],
+};
+
+try {
+    const savedMessageStorage = localStorage.getItem(SAVE_KEY);
+    if (savedMessageStorage) {
+        const messages = JSON.parse(savedMessageStorage);
+        if (Array.isArray(messages)) {
+            state.savedMessages = messages;
+            state.savedMessageCount = messages.length;
+            renderUI();
+        }
+    }
+} catch (e) {}
+
+function renderUI () {
+    form.querySelectorAll("input[type=radio]").forEach(el => {
+        if (el instanceof HTMLInputElement) {
+            const label = el.parentElement;
+            if (label && label.nodeName === "LABEL") {
+                label.classList.toggle("checked", el.checked);
+            }
+        }
+    });
+
+    const formData = new FormData(form);
+    const isDownloadPage = formData.get("message-list") === "page";
+
+    if (fieldSet) {
+        fieldSet.disabled = (isDownloadPage ? state.pageMessageCount : state.savedMessageCount) === 0;
+    }
+
+    if (savedStatusTxt) {
+        savedStatusTxt.textContent = `${state.savedMessageCount} messages`;
+    }
+}
 
 async function getCurrentTab() {
     let queryOptions = { active: true, lastFocusedWindow: true };
@@ -24,6 +76,7 @@ async function getCurrentTab() {
  * @property {string} subject
  * @property {string} date  ISO 8601
  * @property {string} content
+ * @property {boolean} read
  */
 
 /**
@@ -32,8 +85,6 @@ async function getCurrentTab() {
  */
 function countMessages () {
     const messages = document.querySelectorAll(".p-4");
-
-    console.log(`${messages.length} messages`);
 
     return messages.length;
 }
@@ -56,12 +107,14 @@ function getMessages () {
         const content = subjectEl?.nextSibling?.textContent?.substring(3) || "";
         const dateText = el.querySelector(".text-right strong")?.textContent || "";
         const date = new Date(+new Date(dateText) + timeDelta).toISOString();
+        const read = !el.classList.contains("lightgrey-bg");
 
         messages.push({
             id,
             subject,
             date,
             content,
+            read,
         });
     }
 
@@ -98,6 +151,7 @@ function getSingleMessage () {
             subject,
             date,
             content,
+            read: true,
         };
     }
 
@@ -108,6 +162,8 @@ divMultiple && (divMultiple.style.display = "none");
 divSingle && (divSingle.style.display = "none");
 
 getCurrentTab().then(tab => {
+    if (!tab) return;
+
     if (cpInboxSingle.test(tab.url || "")) {
         divIntro && (divIntro.style.display = "none");
         divSingle && (divSingle.style.display = "");
@@ -143,78 +199,162 @@ getCurrentTab().then(tab => {
         })
         .then(results => {
             for (const { result } of results) {
-                h1 && (h1.textContent = `${result} messages`);
+                state.pageMessageCount = result;
+                statusTxt && (statusTxt.textContent = `${result} messages`);
                 if (result > 0) {
                     divMultiple && (divMultiple.style.display = "");
                 }
+                renderUI();
             }
         });
 
-        [btnEmlZip, btnMbox, btnMboxZip].forEach(btn => {
-            btn.addEventListener("click", () => {
+        [
+            btnEmlZip,
+            btnMbox,
+            btnMboxZip,
+            btnCsv,
+            btnCsvZip
+        ].forEach(btn => {
+            btn && btn.addEventListener("click", e => {
+                e.preventDefault();
+
+                const format = (btn === btnEmlZip ? "eml" : ((btn === btnCsv || btn === btnCsvZip) ? "csv" : "mbox"));
+                const zipped = [btnCsvZip, btnEmlZip, btnMboxZip].includes(btn);
+
+                const formData = new FormData(form);
+                const isDownloadPage = formData.get("message-list") === "page";
+
+                if (isDownloadPage) {
+                    chrome.scripting.executeScript({
+                        target: { tabId: tab.id },
+                        func: getMessages
+                    })
+                    .then(results => {
+                        if (results[0]) {
+                            /** @type {Message[]} */
+                            const messages = results[0].result;
+                            downloadMessages(messages, format, zipped);
+                        }
+                    });
+                }
+                else {
+                    downloadMessages(state.savedMessages, format, zipped);
+                }
+            });
+        });
+
+        if (btnSave){
+            btnSave.disabled = false;
+            btnSave.addEventListener("click", e => {
+                e.preventDefault();
+
                 chrome.scripting.executeScript({
                     target: { tabId: tab.id },
                     func: getMessages
                 })
                 .then(results => {
-                    for (const { result } of results) {
-                        console.log(result);
+                    if (results[0]) {
+                        /** @type {Message[]} */
+                        const messages = results[0].result;
 
-                        if (btn === btnEmlZip) {
-                            const zip = new JSZip();
-
-                            for (const message of result) {
-                                zip.file(`message-${message.id}.eml`, makeMessage(message));
-                            }
-
-                            zip.generateAsync({ type: "blob" })
-                            .then(blob => {
-                                downloadFile("emails.zip", blob);
-                            });
-                        }
-                        else  {
-                            const mboxList = [];
-
-                            for (const message of result) {
-                                mboxList.push(`From ${fromAddr} ${asctime(new Date(message.date))}\n${makeMessage(message)}`);
-                            }
-
-                            const mbox = mboxList.join("\n\n");
-
-                            if (btn === btnMboxZip) {
-                                const zip = new JSZip();
-
-                                zip.file(`emails.mbox`, mbox);
-
-                                zip.generateAsync({ type: "blob" })
-                                .then(blob => {
-                                    downloadFile("emails.zip", blob);
-                                });
-                            }
-                            else {
-                                const blob = new Blob([mbox]);
-                                downloadFile("emails.mbox", blob);
+                        for (const message of messages) {
+                            // Avoid duplicates
+                            if (!state.savedMessages.some(m => m.id === message.id)) {
+                                state.savedMessages.push(message);
                             }
                         }
+
+                        state.savedMessageCount = state.savedMessages.length;
+
+                        localStorage.setItem(SAVE_KEY, JSON.stringify(state.savedMessages));
+
+                        renderUI();
                     }
                 });
 
             });
-        });
+        }
     }
 });
 
 
+
 /**
- * @param {{ id: number, subject: string, date: string, content: string}} message
+ * @param {Message[]} messages
+ * @param {string} format
+ * @param {boolean} zipped
+ */
+function downloadMessages(messages, format, zipped) {
+
+    if (format === "eml") {
+        const zip = new JSZip();
+
+        for (const message of messages) {
+            zip.file(`message-${message.id}.eml`, makeMessage(message));
+        }
+
+        zip.generateAsync({ type: "blob" })
+            .then(blob => {
+                downloadFile("emails.zip", blob);
+            });
+    }
+    else if (format === "csv") {
+        const csv = makeCsv(messages);
+
+        if (zipped) {
+            const zip = new JSZip();
+
+            zip.file(`emails.csv`, csv);
+
+            zip.generateAsync({ type: "blob" })
+                .then(blob => {
+                    downloadFile("emails.zip", blob);
+                });
+        }
+        else {
+            const blob = new Blob([csv]);
+            downloadFile("emails.csv", blob);
+        }
+    }
+    else {
+        const mboxList = [];
+
+        for (const message of messages) {
+            mboxList.push(`From ${fromAddr} ${asctime(new Date(message.date))}\n${makeMessage(message)}`);
+        }
+
+        const mbox = mboxList.join("\n\n");
+
+        if (zipped) {
+            const zip = new JSZip();
+
+            zip.file(`emails.mbox`, mbox);
+
+            zip.generateAsync({ type: "blob" })
+                .then(blob => {
+                    downloadFile("emails.zip", blob);
+                });
+        }
+        else {
+            const blob = new Blob([mbox]);
+            downloadFile("emails.mbox", blob);
+        }
+    }
+}
+
+/**
+ * @param {Message} message
  */
 function makeMessage (message) {
+    const subject = message.subject.replace(/\n/g, "");
+
     return `MIME-Version: 1.0
 Date: ${rfc2822UTC(new Date(message.date))}
 From: CrowdProperty <${fromAddr}>
 Message-ID: <message-${message.id}@crowdproperty.com>
-Subject: ${message.subject}
-Thread-Topic: ${message.subject}
+Subject: ${subject}
+Thread-Topic: ${subject}
+X-Mozilla-Status: ${message.read?"0001":"0000"}
 Content-Transfer-Encoding: quoted-printable
 Content-Type: text/html; charset="utf-8"
 
@@ -283,4 +423,36 @@ function downloadFile (filename, content) {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+}
+
+/**
+ * @param {Message[]} messages
+ */
+function makeCsv (messages) {
+    // "Subject","Body","From: (Name)","From: (Address)","From: (Type)","To: (Name)","To: (Address)","To: (Type)","CC: (Name)","CC: (Address)","CC: (Type)","BCC: (Name)","BCC: (Address)","BCC: (Type)","Billing Information","Categories","Importance","Mileage","Sensitivity"
+    const header = `"Subject","Body","From: (Name)","From: (Address)","From: (Type)","To: (Name)","To: (Address)","To: (Type)"`;
+
+    const lines = [ header, ...messages.map(m => {
+        const fields = [
+            m.subject.trim(),
+            m.content.trim(),
+            "CrowdProperty",
+            fromAddr,
+            "SMTP",
+            "",
+            "",
+            ""
+        ];
+
+        const escapedFields = fields
+            .map(f => f.replace(/\n/g, `\t \r\n`))
+            .map(f => f.replace(/"/g, `""`))
+            .map(f => f.length ? `"${f}"` : "");
+
+        return escapedFields.join(",");
+    })];
+
+    const BOM = `\ufeff`;
+
+    return BOM + lines.join("\r\n");
 }
