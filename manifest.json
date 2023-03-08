@@ -13,14 +13,21 @@
 //   "background": {
 //     "service_worker": "background.js"
 //   },
-//   "content_scripts": [
-//     {
-//         "js": ["content.js"],
-//         "matches": [
-//             "https://www.crowdproperty.com/account/messaging",
-//             "https://www.crowdproperty.com/account/messaging?page=*"
-//         ]
-//     }
-//   ],
-  "permissions": ["activeTab","scripting"]
+  "content_scripts": [
+    {
+      "js": ["content.js"],
+      "matches": [
+        "https://www.crowdproperty.com/account/dashboard"
+      ]
+    }
+  ],
+  "permissions": ["activeTab","scripting"],
+  "web_accessible_resources": [
+	  {
+		  "resources": [ "content-inline.js" ],
+		  "matches": [
+        "<all_urls>"
+      ]
+		}
+	]
 }

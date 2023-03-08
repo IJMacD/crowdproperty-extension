@@ -1,6 +1,3 @@
-const messages = document.querySelectorAll(".p-4");
-
-console.log(`${messages.length} messages`);
-
-// `document.querySelector` may return null if the selector doesn't match anything.
-// if (messages.length) {
+const s = document.createElement("script");
+s.src = chrome.runtime.getURL("content-inline.js");
+document.documentElement.appendChild(s);
