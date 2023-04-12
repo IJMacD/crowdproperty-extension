@@ -29,7 +29,7 @@ window.loadDatatable = function(a) {
         }, {
             data: "interest_rate",
             render: function (a, t, e) {
-                return `${a}<br/>${formatDuration((e.loan_end_timestamp - e.loan_start_timestamp) * 1000)}`;
+                return `${a}<br/><span title="Contracted Duration">${formatDuration((e.loan_end_timestamp - e.loan_start_timestamp) * 1000)}</span>`;
             }
         }, {
             data: {
@@ -69,12 +69,12 @@ window.loadDatatable = function(a) {
                 const i = parseFloat(e.interest_rate)/1000 + 0.02;
                 const out = [a];
                 if (v > 0) {
-                    out.push(`(${Math.round(r*100)}%)`);
+                    out.push(`<span title="Percentage Repaid">(${Math.round(r*100)}%)</span>`);
                 }
                 if (r < 1) {
                     const z = (1-r) * (x + w) + (x * d * i / 365);
                     const formatter = Intl.NumberFormat(["en-GB"], { style: "currency", currency: "GBP" });
-                    out.push(`<span style="color:red">${formatter.format(z)}`);
+                    out.push(`<span style="color:red" title="Outstanding (Expected)">${formatter.format(z)}`);
                 }
                 return out.join("<br/>");
             }
