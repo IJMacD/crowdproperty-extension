@@ -4,6 +4,45 @@ var d = Highcharts.charts[0].series[0].data;
 var d2 = newOrder.map(l=>d.find(v=>v.category===l)).filter(x=>x).map(d => ({name:d.name,y:d.y,color:d.color,borderColor:d.borderColor,dataLabels:d.y<0?{style:{color:"white"}}:void 0,isIntermediateSum:d.isIntermediateSum}));
 Highcharts.charts[0].update({xAxis:{categories:newOrder}, series:[{name:"Value",data:d2}]}, true);
 
+document.querySelector(".footerisk").style.display = "none";
+
+let lastMode = "";
+let overdueCount = 0;
+let activeCount = 0;
+let overdueInterest = 0;
+let outstandingInterest = 0;
+
+let totalPortfolioValue = parseFloat(document.querySelector('.bg-white h4:nth-child(2)').textContent.trim().substring(1).replace(",",""));
+
+const interestDiv = document.createElement("div");
+interestDiv.classList.add("material-card");
+interestDiv.classList.add("mt-5");
+interestDiv.innerHTML = `<table class="table table-borderless table-condensed" style="font-family: 'Gotham',serif">
+<tbody>
+    <tr class="border-bottom">
+        <td colspan="2" style="font-size: 25px"><span style="font-weight: lighter">Interest -</span> <b>Adjusted</b></td>
+    </tr>
+    <tr>
+        <td>Outstanding Interest</td>
+        <td class="text-right" id="osi"></td>
+    </tr>
+    <tr>
+        <td>Overdue Interest</td>
+        <td class="text-right" id="odi"></td>
+    </tr>
+    <tr class="border-bottom">
+        <td>Total Portfolio Value (Rightful)</td>
+        <td class="text-right" id="tpvc"></td>
+    </tr>
+    </tbody></table>`;
+const el = document.getElementById("loan-portfolio");
+if (el) {
+    el.parentElement?.insertBefore(interestDiv, el);
+}
+const overdueInterestP = document.getElementById("odi");
+const outstandingInterestP = document.getElementById("osi");
+const realPortfolioValueP = document.getElementById("tpvc");
+
 // Re-define dataTables function
 window.loadDatatable = function(a) {
     var t, e = $("#".concat(a, ".datatable-sort")), d = "/datatables/pledges/" + a, l = this.project, s = this.loan;
@@ -60,22 +99,59 @@ window.loadDatatable = function(a) {
         }, {
             data: "interest_paid",
             render: function (a, t, e) {
-                const v = parseFloat(a.substring(1))
+                // interestPaid
+                const v = parseFloat(a.substring(1));
+                // expectedInterestAmount
                 const w = parseFloat(e.expected_interest.substring(1));
+                // pledgeSize
                 const x = parseFloat(e.contribution.substring(1).replaceAll(",",""));
+                // Fraction repaid
                 const r = v / w;
-                const isDue  = (e.status !== "Paid Back") && (e.loan_end_timestamp * 1000) < Date.now();
+                const pastEndDate = (e.loan_end_timestamp * 1000) < Date.now();
+                const isDue  = (e.status !== "Paid Back") && pastEndDate;
+                // daysOverdue
                 const d = isDue ? (Date.now() - e.loan_end_timestamp * 1000) / 86400000 : 0;
+                // penaltyInterestRate
                 const i = parseFloat(e.interest_rate)/1000 + 0.02;
                 const out = [a];
                 if (v > 0) {
                     out.push(`<span title="Percentage Repaid">(${Math.round(r*100)}%)</span>`);
                 }
+
                 if (r < 1) {
-                    const z = (1-r) * (x + w) + (x * d * i / 365);
                     const formatter = Intl.NumberFormat(["en-GB"], { style: "currency", currency: "GBP" });
+
+                    // Optimistic estimation includeing 2% overdue bonus
+                    const z = (1-r) * w + (x * d * i / 365);
                     out.push(`<span style="color:red" title="Outstanding (Expected)">${formatter.format(z)}`);
+
+                    // Datatables filters all the rows then displays each row
+                    // Wait for the switchover from filtering to displaying
+                    // before starting to sum overdue interest
+                    if (t === "display") {
+                        if (lastMode === "filter") {
+                            overdueCount = 0;
+                            activeCount = 0;
+                            overdueInterest = 0;
+                            outstandingInterest = 0;
+                        }
+                        if (!pastEndDate || isDue) {
+                            outstandingInterest += (w - v);
+                            activeCount++;
+                        }
+                        if(isDue) {
+                            overdueInterest += (w - v);
+                            overdueCount++;
+                        }
+
+                        overdueInterestP.textContent = formatter.format(overdueInterest);
+                        outstandingInterestP.textContent = formatter.format(outstandingInterest);
+                        realPortfolioValueP.textContent = formatter.format(totalPortfolioValue + overdueInterest);
+                    }
                 }
+
+                lastMode = t;
+
                 return out.join("<br/>");
             }
         }, {
