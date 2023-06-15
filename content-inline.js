@@ -4,15 +4,45 @@ var d = Highcharts.charts[0].series[0].data;
 var d2 = newOrder.map(l=>d.find(v=>v.category===l)).filter(x=>x).map(d => ({name:d.name,y:d.y,color:d.color,borderColor:d.borderColor,dataLabels:d.y<0?{style:{color:"white"}}:void 0,isIntermediateSum:d.isIntermediateSum}));
 Highcharts.charts[0].update({xAxis:{categories:newOrder}, series:[{name:"Value",data:d2}]}, true);
 
+// Hide Risk Banner
 document.querySelector(".footerisk").style.display = "none";
 
+const formatter = Intl.NumberFormat(["en-GB"], { style: "currency", currency: "GBP" });
+
+// Show total outstanding capital
+const capitalRows = document.querySelectorAll('#capital_graph + section + section tr');
+let overdueAmount = 0;
+let inOverdue = false;
+for (const el of capitalRows) {
+    if (el.textContent?.trim() === "Overdue") {
+        inOverdue = true;
+    }
+    if (inOverdue && el.children.length === 2) {
+        const amount = parseFloat(el.children.item(1).textContent?.trim().substring(1).replace(",",""));
+        overdueAmount += amount;
+    }
+}
+const totalRow = capitalRows.item(capitalRows.length - 2);
+const tr = document.createElement("tr");
+tr.innerHTML = `<td colspan="2" class="text-right"><b>Total Overdue &nbsp;&nbsp; ${formatter.format(overdueAmount)}</b></td>`;
+totalRow.parentElement?.insertBefore(tr, totalRow);
+
+const totalActiveLoans = parseFloat(totalRow.textContent.replace(/[^\d.]/g, ""));
+
+// Calculate Outstanding Interest
 let lastMode = "";
 let overdueCount = 0;
 let activeCount = 0;
 let overdueInterest = 0;
 let outstandingInterest = 0;
 
-let totalPortfolioValue = parseFloat(document.querySelector('.bg-white h4:nth-child(2)').textContent.trim().substring(1).replace(",",""));
+const totalPortfolioValue = parseFloat(document.querySelector('.bg-white h4:nth-child(2)').textContent.trim().substring(1).replace(",",""));
+
+const availableCashValue = parseFloat(document.querySelector('.bg-white:nth-child(3) h4:nth-child(2)').textContent.trim().substring(1).replace(",",""));
+
+const pendingAmount = totalPortfolioValue - availableCashValue - totalActiveLoans;
+
+const runningLoansAmount = totalActiveLoans - overdueAmount;
 
 const interestDiv = document.createElement("div");
 interestDiv.classList.add("material-card");
@@ -42,6 +72,101 @@ if (el) {
 const overdueInterestP = document.getElementById("odi");
 const outstandingInterestP = document.getElementById("osi");
 const realPortfolioValueP = document.getElementById("tpvc");
+
+const pieCard = document.createElement("div");
+pieCard.classList.add("material-card");
+pieCard.classList.add("mt-5");
+pieCard.innerHTML = `<table class="table table-borderless table-condensed" style="font-family: 'Gotham',serif">
+<tbody>
+    <tr class="border-bottom">
+        <td colspan="2" style="font-size: 25px"><span style="font-weight: lighter">Capital Breakdown</b></td>
+    </tr>
+    </tbody></table>`;
+const pieDiv = document.createElement("div");
+pieCard.appendChild(pieDiv);
+
+interestDiv.parentElement?.insertBefore(pieCard, interestDiv);
+
+Highcharts.setOptions({
+    lang: {
+        thousandsSep: ','
+    }
+});
+
+Highcharts.chart(pieDiv, {
+    chart: {
+        plotBackgroundColor: null,
+        plotBorderWidth: null,
+        plotShadow: false,
+        type: 'pie'
+    },
+    title: {
+        text: ""
+    },
+    tooltip: {
+        pointFormat: '{series.name}: <b>£{point.y:,.2f}</b>'
+    },
+    accessibility: {
+        point: {
+            valueSuffix: '%'
+        }
+    },
+    plotOptions: {
+        pie: {
+            allowPointSelect: true,
+            cursor: 'pointer',
+            dataLabels: {
+                enabled: true,
+                format: '<b>{point.name}</b>: {point.percentage:.1f} %'
+            }
+        }
+    },
+    series: [{
+        name: 'Capital',
+        colorByPoint: true,
+        data: [{
+            name: 'Pending',
+            y: pendingAmount,
+            color: {
+                linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
+                stops: [
+                    [0, "#152329"],
+                    [1, "#3C5F7A"]
+                ]
+            }
+        }, {
+            name: 'Active (Due)',
+            y: runningLoansAmount,
+            color: {
+                linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
+                stops: [
+                    [0, '#38ef7d'],
+                    [1, '#11998e']
+                ]
+            }
+        },  {
+            name: 'Active (Overdue)',
+            y: overdueAmount,
+            color: {
+                linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
+                stops: [
+                    [0, "#bd3654"],
+                    [1, "#bd3676"]
+                ]
+            }
+        }, {
+            name: 'Cash',
+            y: availableCashValue,
+            color: {
+                linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
+                stops: [
+                    [0, "#152329"],
+                    [1, "#3C5F7A"]
+                ]
+            }
+        }]
+    }]
+});
 
 // Re-define dataTables function
 window.loadDatatable = function(a) {
@@ -119,8 +244,6 @@ window.loadDatatable = function(a) {
                 }
 
                 if (r < 1) {
-                    const formatter = Intl.NumberFormat(["en-GB"], { style: "currency", currency: "GBP" });
-
                     // Optimistic estimation includeing 2% overdue bonus
                     const z = (1-r) * w + (x * d * i / 365);
                     out.push(`<span style="color:red" title="Outstanding (Expected)">${formatter.format(z)}`);
