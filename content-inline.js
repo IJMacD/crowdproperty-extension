@@ -1,3 +1,8 @@
+// Add sankey module needed later
+const s = document.createElement("script");
+s.src = "https://unpkg.com/highcharts@9.1.2/modules/sankey.js";
+document.head.append(s);
+
 // Re-order chart categories
 var newOrder = ['Available', 'Pledged', 'Not Started', 'Active Loans', 'Account', '12+ Mths', '6-12 Mths', '3-6 Mths', '0-3 Mths', '0-3 Mths Overdue', '3-6 Mths Overdue', '6-12 Mths Overdue', '12+ Mths Overdue', 'Balance'];
 var d = Highcharts.charts[0].series[0].data;
@@ -333,4 +338,117 @@ function formatDuration (delta) {
  */
 function formatDate (d) {
     return d.toISOString().substring(0,10).replace(/-/g, "\u2011");
+}
+
+// Add Sankey card and styles
+const sankeyCard = document.createElement("div");
+sankeyCard.className = "material-card mt-5";
+sankeyCard.innerHTML = `<table class="table table-borderless table-condensed" style="font-family: 'Gotham',serif">
+<tbody>
+    <tr class="border-bottom">
+        <td colspan="2" style="font-size: 25px"><span style="font-weight: lighter">Capital Flow</b></td>
+    </tr>
+    </tbody></table>
+    <button onClick="updateSankey()">Update</button>`;
+const sankeyDiv = document.createElement("div");
+sankeyDiv.id = "sankey";
+sankeyCard.append(sankeyDiv);
+const lp = document.getElementById("loan-portfolio");
+lp?.parentElement?.insertBefore(sankeyCard, lp);
+
+// Need to flip chart and un-flip labels
+const sankeyStyle = document.createElement("style");
+sankeyStyle.innerHTML = `
+#sankey g.highcharts-series.highcharts-series-0.highcharts-sankey-series.highcharts-tracker {
+    transform: translate(790px, 53px) scale(-1, 1);
+}
+
+#sankey g.highcharts-data-labels.highcharts-series-0.highcharts-sankey-series.highcharts-tracker {
+    transform: translate(790px, 53px) scale(-1, 1);
+}
+
+#sankey g.highcharts-label.highcharts-data-label text {
+    transform: translate(80px, 0px) scale(-1, 1);
+}`;
+document.body.append(sankeyStyle);
+
+const greyGradient = { linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 }, stops: [ [0, "#152329"], [1, "#3C5F7A"] ] };
+const greenGradient = { linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 }, stops: [ [0, '#38ef7d'], [1, '#11998e'] ] };
+const redGradient = { linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 }, stops: [ [0, "#bd3654"], [1, "#bd3676"] ] };
+
+function updateSankey () {
+    fetch("https://www.crowdproperty.com/account/portfolio/all/transactions-export/all")
+        .then(r => r.text())
+        .then(csv => {
+            localStorage.setItem("transactions", csv);
+
+            showSankey();
+        });
+
+    sankeyDiv.innerHTML = `<p style="font-style:italic">Loading...</p>`;
+}
+
+showSankey();
+
+function showSankey () {
+    const CSV_DATA = localStorage.getItem("transactions");
+
+    import("./csvdb.js").then(module => {
+        const db = new module.CSVDB(CSV_DATA);
+
+        const year = row => new Date(row.Date).getFullYear();
+
+        const deposits = db
+            .query()
+            .where(row => row.From === "Deposit")
+            .groupBy(year)
+            .select({year, amount: "SUM(Transaction)"})
+            .toArray()
+            .reverse();
+
+        const interest = db
+            .query()
+            .where(row => row.Type.startsWith("Interest"))
+            .groupBy(year)
+            .select({year, amount: "SUM(Transaction)"})
+            .toArray()
+            .reverse();
+
+        const data = [];
+        let currentBalance = 0;
+        for (let i = 0; i < deposits.length; i++) {
+            const year = deposits[i].year;
+            const target = i === deposits.length - 1 ? "Current" : year;
+            if (i > 0) {
+                data.push([`${year-1} Balance`, `${target} Balance`, currentBalance, greenGradient]);
+            }
+            data.push([`${year} Deposit`, `${target} Balance`, deposits[i].amount, greyGradient]);
+            data.push([`${year} Interest`, `${target} Balance`, interest[i].amount, redGradient]);
+            currentBalance += deposits[i].amount + interest[i].amount;
+        }
+
+        Highcharts.chart(sankeyDiv, {
+            centerInCategory: true,
+            title: {
+                text: 'Capital Flow'
+            },
+            accessibility: {
+                point: {
+                    valueDescriptionFormat: '{index}. {point.from} to {point.to}, {point.weight:%.2f}.'
+                }
+            },
+            series: [{
+                colorByPoint: true,
+                // Note to/from are reversed
+                keys: ['to', 'from', 'weight', 'color'],
+                data,
+                type: 'sankey',
+                name: 'Capital',
+                nodes: [
+                    ...data.map(d => ({color:greenGradient,id:d[0]})),
+                    {color:greenGradient,id:"Current Balance"}
+                ]
+            }]
+        });
+    });
 }
