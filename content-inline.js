@@ -1,13 +1,25 @@
+/** @typedef {import("highcharts")} highcharts */
+
 // Add sankey module needed later
 const s = document.createElement("script");
 s.src = "https://unpkg.com/highcharts@9.1.2/modules/sankey.js";
 document.head.append(s);
 
 // Re-order chart categories
-var newOrder = ['Available', 'Pledged', 'Not Started', 'Active Loans', 'Account', '12+ Mths', '6-12 Mths', '3-6 Mths', '0-3 Mths', '0-3 Mths Overdue', '3-6 Mths Overdue', '6-12 Mths Overdue', '12+ Mths Overdue', 'Balance'];
-var d = Highcharts.charts[0].series[0].data;
-var d2 = newOrder.map(l=>d.find(v=>v.category===l)).filter(x=>x).map(d => ({name:d.name,y:d.y,color:d.color,borderColor:d.borderColor,dataLabels:d.y<0?{style:{color:"white"}}:void 0,isIntermediateSum:d.isIntermediateSum}));
-Highcharts.charts[0].update({xAxis:{categories:newOrder}, series:[{name:"Value",data:d2}]}, true);
+function reorderChart () {
+    var newOrder = ['Available', 'Pledged', 'Not Started', 'Active Loans', 'Account', '12+ Mths', '6-12 Mths', '3-6 Mths', '0-3 Mths', '0-3 Mths Overdue', '3-6 Mths Overdue', '6-12 Mths Overdue', '12+ Mths Overdue', 'Balance'];
+    var d = Highcharts.charts[0].series[0].data;
+    var d2 = newOrder.map(l=>d.find(v=>v.category===l)).filter(x=>x).map(d => ({name:d.name,y:d.y,color:d.color,borderColor:d.borderColor,dataLabels:d.y<0?{style:{color:"white"}}:void 0,isIntermediateSum:d.isIntermediateSum}));
+    Highcharts.charts[0].update({xAxis:{categories:newOrder}, series:[{name:"Value",data:d2}]}, true);
+}
+
+try {
+    reorderChart();
+}
+catch (e) {
+    console.debug("Chart not ready for re-drawing. Retrying in 5 sec");
+    setTimeout(() => reorderChart(), 5000);
+}
 
 // Hide Risk Banner
 document.querySelector(".footerisk").style.display = "none";
@@ -348,13 +360,14 @@ sankeyCard.innerHTML = `<table class="table table-borderless table-condensed" st
     <tr class="border-bottom">
         <td colspan="2" style="font-size: 25px"><span style="font-weight: lighter">Capital Flow</b></td>
     </tr>
-    </tbody></table>
-    <button onClick="updateSankey()">Update</button>`;
-const sankeyDiv = document.createElement("div");
-sankeyDiv.id = "sankey";
-sankeyCard.append(sankeyDiv);
+</tbody></table>
+<div id="sankey"></div>
+<p style="text-align:right;margin-top: 1rem;">
+    <button onclick="updateSankey()" class="btn btn-sm btn-gradient-blue">Update</button>
+</p>`;
 const lp = document.getElementById("loan-portfolio");
 lp?.parentElement?.insertBefore(sankeyCard, lp);
+const sankeyDiv = document.getElementById("sankey");
 
 // Need to flip chart and un-flip labels
 const sankeyStyle = document.createElement("style");
@@ -393,7 +406,7 @@ showSankey();
 function showSankey () {
     const CSV_DATA = localStorage.getItem("transactions");
 
-    import("./csvdb.js").then(module => {
+    import("./csvdb.min.js").then(module => {
         const db = new module.CSVDB(CSV_DATA);
 
         const year = row => new Date(row.Date).getFullYear();
@@ -427,28 +440,42 @@ function showSankey () {
             currentBalance += deposits[i].amount + interest[i].amount;
         }
 
-        Highcharts.chart(sankeyDiv, {
-            centerInCategory: true,
-            title: {
-                text: 'Capital Flow'
-            },
-            accessibility: {
-                point: {
-                    valueDescriptionFormat: '{index}. {point.from} to {point.to}, {point.weight:%.2f}.'
+        function draw () {
+            Highcharts.chart(sankeyDiv, {
+                centerInCategory: true,
+                title: {
+                    text: 'Capital Flow'
+                },
+                accessibility: {
+                    point: {
+                        valueDescriptionFormat: '{index}. {point.from} to {point.to}, £{point.weight:,.2f}.'
+                    }
+                },
+                series: [{
+                    colorByPoint: true,
+                    // Note to/from are reversed
+                    keys: ['to', 'from', 'weight', 'color'],
+                    data,
+                    type: 'sankey',
+                    name: 'Capital',
+                    nodes: [
+                        ...data.map(d => ({color:greenGradient,id:d[0]})),
+                        {color:greenGradient,id:"Current Balance"}
+                    ]
+                }],
+                tooltip: {
+                    nodeFormat: '£{point.sum:,.2f}.',
+                    pointFormat: '{point.to} → {point.from} £{point.weight:,.2f}.'
                 }
-            },
-            series: [{
-                colorByPoint: true,
-                // Note to/from are reversed
-                keys: ['to', 'from', 'weight', 'color'],
-                data,
-                type: 'sankey',
-                name: 'Capital',
-                nodes: [
-                    ...data.map(d => ({color:greenGradient,id:d[0]})),
-                    {color:greenGradient,id:"Current Balance"}
-                ]
-            }]
-        });
+            });
+        }
+
+        try {
+            draw();
+        }
+        catch (e) {
+            console.debug("Sankey module not ready. Retrying");
+            setTimeout(() => draw(), 5000);
+        }
     });
 }
