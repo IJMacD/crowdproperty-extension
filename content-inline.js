@@ -26,6 +26,11 @@ document.querySelector(".footerisk").style.display = "none";
 
 const formatter = Intl.NumberFormat(["en-GB"], { style: "currency", currency: "GBP" });
 
+const overviewCard = document.querySelectorAll(".material-card")[1];
+/** @type {HTMLElement} */
+const interestCell = overviewCard.querySelector("tr:nth-child(4) td:nth-child(2)");
+interestCell.style = "font-weight: bolder; color: darkgreen; font-size: 1.1em;";
+
 // Show total outstanding capital
 const capitalRows = document.querySelectorAll('#capital_graph + section + section tr');
 let overdueAmount = 0;
@@ -70,15 +75,15 @@ interestDiv.innerHTML = `<table class="table table-borderless table-condensed" s
         <td colspan="2" style="font-size: 25px"><span style="font-weight: lighter">Interest -</span> <b>Adjusted</b></td>
     </tr>
     <tr>
-        <td>Outstanding Interest</td>
+        <td>Estimated Interest Due</td>
         <td class="text-right" id="osi"></td>
     </tr>
     <tr>
-        <td>Overdue Interest</td>
+        <td>Estimated Interest Overdue</td>
         <td class="text-right" id="odi"></td>
     </tr>
     <tr class="border-bottom">
-        <td>Total Portfolio Value (Rightful)</td>
+        <td>(Rightful) Portfolio Value</td>
         <td class="text-right" id="tpvc"></td>
     </tr>
     </tbody></table>`;
@@ -110,80 +115,84 @@ Highcharts.setOptions({
     }
 });
 
-Highcharts.chart(pieDiv, {
-    chart: {
-        plotBackgroundColor: null,
-        plotBorderWidth: null,
-        plotShadow: false,
-        type: 'pie'
-    },
-    title: {
-        text: ""
-    },
-    tooltip: {
-        pointFormat: '{series.name}: <b>£{point.y:,.2f}</b>'
-    },
-    accessibility: {
-        point: {
-            valueSuffix: '%'
-        }
-    },
-    plotOptions: {
-        pie: {
-            allowPointSelect: true,
-            cursor: 'pointer',
-            dataLabels: {
-                enabled: true,
-                format: '<b>{point.name}</b>: {point.percentage:.1f} %'
+window.addEventListener("load", () => showPie());
+
+function showPie() {
+    Highcharts.chart(pieDiv, {
+        chart: {
+            plotBackgroundColor: null,
+            plotBorderWidth: null,
+            plotShadow: false,
+            type: 'pie'
+        },
+        title: {
+            text: ""
+        },
+        tooltip: {
+            pointFormat: '{series.name}: <b>£{point.y:,.2f}</b>'
+        },
+        accessibility: {
+            point: {
+                valueSuffix: '%'
             }
-        }
-    },
-    series: [{
-        name: 'Capital',
-        colorByPoint: true,
-        data: [{
-            name: 'Pending',
-            y: pendingAmount,
-            color: {
-                linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
-                stops: [
-                    [0, "#152329"],
-                    [1, "#3C5F7A"]
-                ]
+        },
+        plotOptions: {
+            pie: {
+                allowPointSelect: true,
+                cursor: 'pointer',
+                dataLabels: {
+                    enabled: true,
+                    format: '<b>{point.name}</b>: {point.percentage:.1f} %'
+                }
             }
-        }, {
-            name: 'Active (Due)',
-            y: runningLoansAmount,
-            color: {
-                linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
-                stops: [
-                    [0, '#38ef7d'],
-                    [1, '#11998e']
-                ]
-            }
-        },  {
-            name: 'Active (Overdue)',
-            y: overdueAmount,
-            color: {
-                linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
-                stops: [
-                    [0, "#bd3654"],
-                    [1, "#bd3676"]
-                ]
-            }
-        }, {
-            name: 'Cash',
-            y: availableCashValue,
-            color: {
-                linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
-                stops: [
-                    [0, "#152329"],
-                    [1, "#3C5F7A"]
-                ]
-            }
+        },
+        series: [{
+            name: 'Capital',
+            colorByPoint: true,
+            data: [{
+                name: 'Pending',
+                y: pendingAmount,
+                color: {
+                    linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
+                    stops: [
+                        [0, "#152329"],
+                        [1, "#3C5F7A"]
+                    ]
+                }
+            }, {
+                name: 'Active (Due)',
+                y: runningLoansAmount,
+                color: {
+                    linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
+                    stops: [
+                        [0, '#38ef7d'],
+                        [1, '#11998e']
+                    ]
+                }
+            },  {
+                name: 'Active (Overdue)',
+                y: overdueAmount,
+                color: {
+                    linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
+                    stops: [
+                        [0, "#bd3654"],
+                        [1, "#bd3676"]
+                    ]
+                }
+            }, {
+                name: 'Cash',
+                y: availableCashValue,
+                color: {
+                    linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
+                    stops: [
+                        [0, "#152329"],
+                        [1, "#3C5F7A"]
+                    ]
+                }
+            }]
         }]
-    }]
-});
+    });
+}
 
 // Re-define dataTables function
 window.loadDatatable = function(a) {
@@ -285,7 +294,7 @@ window.loadDatatable = function(a) {
                         }
 
                         overdueInterestP.textContent = formatter.format(overdueInterest);
-                        outstandingInterestP.textContent = formatter.format(outstandingInterest);
+                        outstandingInterestP.textContent = formatter.format(outstandingInterest - overdueInterest);
                         realPortfolioValueP.textContent = formatter.format(totalPortfolioValue + overdueInterest);
                     }
                 }
