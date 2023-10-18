@@ -29,7 +29,15 @@ try {
 }
 catch (e) {
     console.debug("Chart not ready for re-drawing. Retrying in 5 sec");
-    setTimeout(() => reorderChart(), 5000);
+    setTimeout(() => {
+        try{
+            reorderChart();
+        }
+        catch (e) {
+            console.debug("Chart not ready for re-drawing. Retrying after 10 sec");
+            setTimeout(() => reorderChart(), 5000);
+        }
+    }, 5000);
 }
 
 // Hide Risk Banner
