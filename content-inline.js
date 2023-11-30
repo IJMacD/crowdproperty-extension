@@ -447,6 +447,14 @@ function showSankey () {
             .toArray()
             .reverse();
 
+        const withdrawals = db
+            .query()
+            .where(row => row.To.startsWith("Withdrawal"))
+            .groupBy(year)
+            .select({year, amount: "SUM(Transaction)"})
+            .toArray()
+            .reverse();
+
         const interest = db
             .query()
             .where(row => row.Type.startsWith("Interest"))
@@ -463,9 +471,37 @@ function showSankey () {
             if (i > 0) {
                 data.push([`${year-1} Balance`, `${target} Balance`, currentBalance, greenGradient]);
             }
-            data.push([`${year} Deposit`, `${target} Balance`, deposits[i].amount, greyGradient]);
+
+            const withdrawalsThisYear = withdrawals.find(w => w.year === year)?.amount || 0;
+            const netDepositsThisYear = deposits[i].amount + withdrawalsThisYear;
+
+            const showWithdrawals = false;
+
+            if (showWithdrawals) {
+                // Withdrew more than deposited
+                if (netDepositsThisYear < 0) {
+                    data.push([`${year-1} Balance`, `${target} Withdrawal`, -netDepositsThisYear, greyGradient]);
+
+                    if (deposits[i].amount > 0) {
+                        data.push([`${year} Deposit`, `${target} Withdrawal`, deposits[i].amount, greyGradient]);
+                    }
+                }
+                // Deposited more than withdrew
+                else if (netDepositsThisYear > 0) {
+                    data.push([`${year} Deposit`, `${target} Balance`, netDepositsThisYear, greyGradient]);
+
+                    if (withdrawalsThisYear < 0) {
+                        data.push([`${year} Deposit`, `${target} Withdrawal`, -withdrawalsThisYear, greyGradient]);
+                    }
+                }
+            }
+            else {
+                data.push([`${year} Deposit`, `${target} Balance`, netDepositsThisYear, greyGradient]);
+            }
+
             data.push([`${year} Interest`, `${target} Balance`, interest[i].amount, redGradient]);
-            currentBalance += deposits[i].amount + interest[i].amount;
+
+            currentBalance += netDepositsThisYear + interest[i].amount;
         }
 
         function draw () {
