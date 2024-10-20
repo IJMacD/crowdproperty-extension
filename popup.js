@@ -74,7 +74,7 @@ async function getCurrentTab() {
  * @typedef Message
  * @property {number} id
  * @property {string} subject
- * @property {string} date  ISO 8601
+ * @property {Date} date
  * @property {string} content
  * @property {boolean} read
  */
@@ -95,7 +95,7 @@ function countMessages () {
  */
 function getMessages () {
     const cpInbox = 'https://www.crowdproperty.com/account/messaging';
-    const timeDelta = 8 * 60 * 60 * 1000;
+    const timeDelta = new Date().getTimezoneOffset() * 60 * 1000;
 
     /** @type {Message[]} */
     const messages = [];
@@ -105,14 +105,32 @@ function getMessages () {
         const subjectEl = el.querySelector("strong");
         const subject = subjectEl?.textContent || "";
         const content = subjectEl?.nextSibling?.textContent?.substring(3) || "";
+        // Expected date format: '14-Jun-23 09:13'
         const dateText = el.querySelector(".text-right strong")?.textContent || "";
-        const date = new Date(+new Date(dateText) + timeDelta).toISOString();
+
+        const dateTextHour = dateText.split(" ")[1].split(":")[0];
+
+        // Time will be Europe/London.
+        // (We'll  treat it as UTC - which is wrong half the year)
+        let date = new Date(+new Date(dateText) - timeDelta);
+
+        // Then check to see if it needs adjustment by generating the would-be
+        // date in the correct time zone.
+        const parsedHour = Intl.DateTimeFormat(void 0, { hour: "2-digit", timeZone: "Europe/London" }).format(date);
+        if (parsedHour != dateTextHour) {
+            // If they don't match then it means Europe/London was in Summer
+            // time (and not UTC). Therefore the time in UTC was actually one
+            // hour later.
+            date = new Date(+date - 60 * 60 * 1000);
+        }
+
         const read = !el.classList.contains("lightgrey-bg");
 
         messages.push({
             id,
             subject,
             date,
+            // date: date.toISOString(),
             content,
             read,
         });
@@ -128,19 +146,26 @@ function getMessages () {
 function getSingleMessage () {
     debugger;
     const cpInboxSingle = /https:\/\/www.crowdproperty.com\/account\/messaging\/(\d+)/;
-    const timeDelta = 8 * 60 * 60 * 1000;
 
     const match = cpInboxSingle.exec(window.location.toString());
 
     if (match) {
         const id = +match[1];
         const subject = document.getElementsByClassName("section-title")[1].textContent || "";
+        /** @type {HTMLElement?} */
         const btnEl = document.querySelector(".btn-no-style");
         const containerEl = btnEl?.parentElement;
         const dateTitleText = btnEl?.dataset['originalTitle'] || "";
+        // Expected format: '<h4>14/06/2023 08:11:46</h4>'
         const dateMatch = /<h4>([^<]+)<\/h4>/.exec(dateTitleText);
         const d = dateMatch ? dateMatch[1] : "";
-        const date = `${d.substring(6, 10)}-${d.substring(3, 5)}-${d.substring(0,2)}T${d.substring(11)}Z`;
+        const h = d.substring(0, 2);
+        let date = new Date(`${d.substring(6, 10)}-${d.substring(3, 5)}-${h}T${d.substring(11)}Z`);
+        // Check to see if we need to adjust the date for Europe/London Summer time.
+        const parsedHour = Intl.DateTimeFormat(void 0, { hour: "2-digit", timeZone: "Europe/London" }).format(date);
+        if (h != parsedHour) {
+            date = new Date(+date - 60 * 60 * 1000);
+        }
 
         btnEl?.remove();
         const content = containerEl?.textContent?.trim() || "";
@@ -150,6 +175,7 @@ function getSingleMessage () {
             id,
             subject,
             date,
+            // date: date.toISOString(),
             content,
             read: true,
         };
@@ -169,116 +195,123 @@ getCurrentTab().then(tab => {
         divSingle && (divSingle.style.display = "");
 
         btnEml && btnEml.addEventListener("click", () => {
-            chrome.scripting.executeScript({
-                target: { tabId: tab.id },
-                func: getSingleMessage
-            })
-            .then(results => {
-                for (const { result: message } of results) {
-                    if (message) {
-                        const blob = new Blob([makeMessage(message)]);
+            if (tab.id) {
+                chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    func: getSingleMessage
+                })
+                .then(results => {
+                    for (const { result: message } of results) {
+                        if (message) {
+                            const blob = new Blob([makeMessage(message)]);
 
-                        downloadFile(`message-${message.id}.eml`, blob);
+                            downloadFile(`message-${message.id}.eml`, blob);
+                        }
+                        else {
+                            divIntro && (divIntro.style.display = "");
+                            divSingle && (divSingle.style.display = "none");
+                            if (divIntro?.firstElementChild) {
+                                divIntro.firstElementChild.textContent = "Error getting message";
+                            }
+                        }
                     }
-                    else {
-                        divIntro && (divIntro.style.display = "");
-                        divSingle && (divSingle.style.display = "none");
-                        divIntro.firstElementChild.textContent = "Error getting message";
-                    }
-                }
-            });
-
+                });
+            }
         });
     }
     else if (tab.url?.startsWith(cpInbox)) {
         divIntro && (divIntro.style.display = "none");
 
-        chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            func: countMessages
-        })
-        .then(results => {
-            for (const { result } of results) {
-                state.pageMessageCount = result;
-                statusTxt && (statusTxt.textContent = `${result} messages`);
-                if (result > 0) {
-                    divMultiple && (divMultiple.style.display = "");
-                }
-                renderUI();
-            }
-        });
-
-        [
-            btnEmlZip,
-            btnMbox,
-            btnMboxZip,
-            btnCsv,
-            btnCsvZip
-        ].forEach(btn => {
-            btn && btn.addEventListener("click", e => {
-                e.preventDefault();
-
-                const format = (btn === btnEmlZip ? "eml" : ((btn === btnCsv || btn === btnCsvZip) ? "csv" : "mbox"));
-                const zipped = [btnCsvZip, btnEmlZip, btnMboxZip].includes(btn);
-
-                const formData = new FormData(form);
-                const isDownloadPage = formData.get("message-list") === "page";
-
-                if (isDownloadPage) {
-                    chrome.scripting.executeScript({
-                        target: { tabId: tab.id },
-                        func: getMessages
-                    })
-                    .then(results => {
-                        if (results[0]) {
-                            /** @type {Message[]} */
-                            const messages = results[0].result;
-                            downloadMessages(messages, format, zipped);
-                        }
-                    });
-                }
-                else {
-                    downloadMessages(state.savedMessages, format, zipped);
+        if (tab.id) {
+            chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                func: countMessages
+            })
+            .then(results => {
+                for (const { result } of results) {
+                    state.pageMessageCount = result;
+                    statusTxt && (statusTxt.textContent = `${result} messages`);
+                    if (result > 0) {
+                        divMultiple && (divMultiple.style.display = "");
+                    }
+                    renderUI();
                 }
             });
-        });
 
-        if (btnSave){
-            btnSave.disabled = false;
-            btnSave.addEventListener("click", e => {
-                e.preventDefault();
+            [
+                btnEmlZip,
+                btnMbox,
+                btnMboxZip,
+                btnCsv,
+                btnCsvZip
+            ].forEach(btn => {
+                btn && btn.addEventListener("click", e => {
+                    e.preventDefault();
 
-                chrome.scripting.executeScript({
-                    target: { tabId: tab.id },
-                    func: getMessages
-                })
-                .then(results => {
-                    if (results[0]) {
-                        /** @type {Message[]} */
-                        const messages = results[0].result;
+                    const format = (btn === btnEmlZip ? "eml" : ((btn === btnCsv || btn === btnCsvZip) ? "csv" : "mbox"));
+                    const zipped = [btnCsvZip, btnEmlZip, btnMboxZip].includes(btn);
 
-                        const map = {};
+                    const formData = new FormData(form);
+                    const isDownloadPage = formData.get("message-list") === "page";
 
-                        for (const message of state.savedMessages) {
-                            map[message.id] = message;
-                        }
-
-                        // Update duplicates
-                        for (const message of messages) {
-                            map[message.id] = message;
-                        }
-
-                        state.savedMessages = Object.values(map);
-
-                        state.savedMessageCount = state.savedMessages.length;
-
-                        localStorage.setItem(SAVE_KEY, JSON.stringify(state.savedMessages));
-
-                        renderUI();
+                    if (isDownloadPage && tab.id) {
+                        chrome.scripting.executeScript({
+                            target: { tabId: tab.id },
+                            func: getMessages
+                        })
+                        .then(results => {
+                            if (results[0]) {
+                                /** @type {Message[]} */
+                                const messages = results[0].result;
+                                downloadMessages(messages, format, zipped);
+                            }
+                        });
+                    }
+                    else {
+                        downloadMessages(state.savedMessages, format, zipped);
                     }
                 });
-
             });
+
+            if (btnSave){
+                btnSave.disabled = false;
+                btnSave.addEventListener("click", e => {
+                    e.preventDefault();
+
+                    if (tab.id) {
+                        chrome.scripting.executeScript({
+                            target: { tabId: tab.id },
+                            func: getMessages
+                        })
+                        .then(results => {
+                            if (results[0]) {
+                                /** @type {Message[]} */
+                                const messages = results[0].result;
+
+                                const map = {};
+
+                                for (const message of state.savedMessages) {
+                                    map[message.id] = message;
+                                }
+
+                                // Update duplicates
+                                for (const message of messages) {
+                                    map[message.id] = message;
+                                }
+
+                                state.savedMessages = Object.values(map);
+
+                                state.savedMessageCount = state.savedMessages.length;
+
+                                localStorage.setItem(SAVE_KEY, JSON.stringify(state.savedMessages));
+
+                                renderUI();
+                            }
+                        });
+                    }
+
+                });
+            }
         }
     }
 });
@@ -293,6 +326,7 @@ getCurrentTab().then(tab => {
 function downloadMessages(messages, format, zipped) {
 
     if (format === "eml") {
+        // @ts-ignore
         const zip = new JSZip();
 
         for (const message of messages) {
@@ -308,6 +342,7 @@ function downloadMessages(messages, format, zipped) {
         const csv = makeCsv(messages);
 
         if (zipped) {
+            // @ts-ignore
             const zip = new JSZip();
 
             zip.file(`emails.csv`, csv);
@@ -334,6 +369,7 @@ function downloadMessages(messages, format, zipped) {
         const mbox = mboxList.join("\n\n");
 
         if (zipped) {
+            // @ts-ignore
             const zip = new JSZip();
 
             zip.file(`emails.mbox`, mbox);
@@ -371,7 +407,8 @@ function getThread (message, messages) {
             .filter(m => m.subject.includes(project))
             .filter(m => m.date < message.date);
 
-        return msgs.sort((a, b) => a.date.localeCompare(b.date));
+        return msgs.sort((a, b) => +a.date - +b.date);
+        // return msgs.sort((a, b) => a.date.localeCompare(b.date));
     }
 
     return [];
@@ -383,13 +420,13 @@ function getMessageID (message) {
 
 /**
  * @param {Message} message
- * @param {Message[]} thread
+ * @param {Message[]} [thread]
  */
 function makeMessage (message, thread) {
     const subject = message.subject.replace(/\n/g, "");
 
     let threadHeaders = "";
-    if (thread.length > 0) {
+    if (thread && thread.length > 0) {
         threadHeaders += `References: ${thread.map(m => getMessageID(m)).join(" ")}\n`;
         threadHeaders += `In-Reply-To: ${getMessageID(thread[thread.length - 1])}\n`;
     }
@@ -472,6 +509,8 @@ function downloadFile (filename, content) {
 }
 
 /**
+ * Note: Outlook may want BOM
+ * Note: No date information
  * @param {Message[]} messages
  */
 function makeCsv (messages) {
