@@ -1,0 +1,9 @@
+{
+    "typeAcquisition": {
+        "include": ["chrome"]
+    },
+    "compilerOptions": {
+        "checkJs": true,
+        "target": "es2018"
+    }
+}

@@ -6,9 +6,36 @@ s.src = "https://unpkg.com/highcharts@9.1.2/modules/sankey.js";
 document.head.append(s);
 
 // Re-order chart categories
-function reorderChart () {
-    var newOrder = ['Available', 'Pledged', 'Not Started', 'Active Loans', 'Account', '12+ Mths', '6-12 Mths', '3-6 Mths', '0-3 Mths', '0-3 Mths Overdue', '3-6 Mths Overdue', '6-12 Mths Overdue', '12+ Mths Overdue', 'Balance'];
-    var d = Highcharts.charts[0].series[0].data;
+function reorderCapitalChart () {
+    const capitalChartContainer = document.querySelector("#capital_graph .highcharts-container");
+
+    if (!capitalChartContainer) {
+        throw Error("Highchart not ready");
+    }
+
+    const chart = Highcharts.charts.find(chart => chart.container === capitalChartContainer);
+
+    if (!chart) {
+        throw Error("Highchart not ready");
+    }
+
+    var newOrder = [
+        'Available',
+        'Pledged',
+        'Not Started',
+        'Active Loans',
+        'Account',
+        '12+ Mths',
+        '6-12 Mths',
+        '3-6 Mths',
+        '0-3 Mths',
+        '0-3 Mths Overdue',
+        '3-6 Mths Overdue',
+        '6-12 Mths Overdue',
+        '12+ Mths Overdue',
+        'Balance'
+    ];
+    var d = chart.series[0].data;
     const overdueColour = {
         linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
         stops: [
@@ -21,21 +48,21 @@ function reorderChart () {
         const dataLabelsColour = (d.y < 0 && d.category != "Balance") ? { style: { color: "white" } } : void 0;
         return ({name:d.name,y:d.y,color,borderColor:d.borderColor,dataLabels:dataLabelsColour,isIntermediateSum:d.isIntermediateSum});
     });
-    Highcharts.charts[0].update({xAxis:{categories:newOrder}, series:[{name:"Value",data:d2}]}, true);
+    chart.update({xAxis:{categories:newOrder}, series:[{name:"Value",data:d2}]}, true);
 }
 
 try {
-    reorderChart();
+    reorderCapitalChart();
 }
 catch (e) {
     console.debug("Chart not ready for re-drawing. Retrying in 5 sec");
     setTimeout(() => {
         try{
-            reorderChart();
+            reorderCapitalChart();
         }
         catch (e) {
             console.debug("Chart not ready for re-drawing. Retrying after 10 sec");
-            setTimeout(() => reorderChart(), 5000);
+            setTimeout(() => reorderCapitalChart(), 5000);
         }
     }, 5000);
 }
