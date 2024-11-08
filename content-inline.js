@@ -620,7 +620,8 @@ function showSankey() {
     const data = [];
     let currentBalance = 0;
 
-    const showWithdrawals = true;
+    const withdrawalNodes = [];
+    const withdrawalGhosts = [];
 
     for (let i = 0; i < deposits.length; i++) {
       const year = deposits[i].year;
@@ -633,7 +634,7 @@ function showSankey() {
       const withdrawalsThisYear =
         -withdrawals.find((w) => w.year === year)?.amount || 0;
 
-      // Assumes deposits every year
+      // Note: The whole algorithm assumes deposits every year
       const netDepositsThisYear = deposits[i].amount - withdrawalsThisYear;
 
       if (i > 0) {
@@ -652,59 +653,64 @@ function showSankey() {
 
       currentBalance += netDepositsThisYear + interest[i].amount;
 
-      if (showWithdrawals) {
+      const d = `${year} Deposit`;
+      const w = `${year} Withdrawal`;
+
+      if (netDepositsThisYear < 0) {
         // Withdrew more than deposited
-        if (netDepositsThisYear < 0) {
-          data.push([
-            `${year} Opening Balance`,
-            `${year} Withdrawal`,
-            -netDepositsThisYear,
-            greyGradient,
-          ]);
+        // ============================
+        // There will be an edge coming from the previous year's balance into
+        // the withdrawal node.
+        // All deposits from the year go straight into the withdrawal node.
 
-          if (deposits[i].amount > 0) {
-            data.push([
-              `${year} Deposit`,
-              `${year} Withdrawal`,
-              deposits[i].amount,
-              greyGradient,
-            ]);
-          }
-        }
-
-        // Deposited more than withdrew
-        else if (netDepositsThisYear > 0) {
-          data.push([
-            `${year} Deposit`,
-            target,
-            netDepositsThisYear,
-            greyGradient,
-          ]);
-
-          if (withdrawalsThisYear > 0) {
-            data.push([
-              `${year} Deposit`,
-              `${year} Withdrawal`,
-              withdrawalsThisYear,
-              greyGradient,
-            ]);
-          }
-        }
-      } else {
         data.push([
-          `${year} Deposit`,
-          target,
-          netDepositsThisYear,
+          `${year} Opening Balance`,
+          w,
+          -netDepositsThisYear,
           greyGradient,
         ]);
+
+        data.push([d, w, deposits[i].amount, greyGradient]);
+
+        withdrawalNodes.push(w);
+      } else if (netDepositsThisYear > 0) {
+        // Deposited more than withdrew
+        // ============================
+        // The net amount deposited goes from the deposit node into the next
+        // year's balance.
+        // If there are any withdrawals the delta between net and total deposits
+        // is the size of the edge from the deposit node into the withdrawal
+        // node.
+
+        data.push([d, target, netDepositsThisYear, greyGradient]);
+
+        if (withdrawalsThisYear > 0) {
+          data.push([d, w, withdrawalsThisYear, greyGradient]);
+
+          withdrawalNodes.push(w);
+        }
       }
 
       data.push([`${year} Interest`, target, interest[i].amount, redGradient]);
+
+      // In order to align the data ranks, we need to fill in dummy points.
+      for (let i = 0; i < withdrawalGhosts.length; i++) {
+        const ghost = withdrawalGhosts[i];
+        withdrawalGhosts[i] += "'";
+        const nextGhost = withdrawalGhosts[i];
+        data.push([ghost, nextGhost, 0]);
+      }
+
+      if (withdrawalsThisYear > 0) {
+        withdrawalGhosts.push(w);
+      }
     }
 
-    // In order to align the data ranks, we need to fill in dummy points
-    // TODO: generalise for any year
-    data.push(["2023 Withdrawal", `Current Ghost`, 0]);
+    const nodeIDs = new Set([
+      ...data.map((d) => d[0]),
+      "Current Balance",
+      ...withdrawalNodes,
+    ]);
 
     function draw() {
       Highcharts.chart(sankeyDiv, {
@@ -729,12 +735,7 @@ function showSankey() {
             data,
             type: "sankey",
             name: "Capital",
-            nodes: [
-              ...data.map((d) => ({ color: greenGradient, id: d[0] })),
-              { color: greenGradient, id: "Current Balance" },
-              // TODO: generalise
-              { color: greyGradient, id: "2024 Withdrawal" },
-            ],
+            nodes: [...nodeIDs].map((id) => ({ color: greenGradient, id })),
           },
         ],
         tooltip: {
