@@ -2,6 +2,21 @@
 
 A 3rd party extension to add some extra features to the Crowd Property website.
 
+## Installation
+
+1. Download the repo to your computer.
+   1. Either, clone using `git`:
+   ```
+    git clone https://github.com/IJMacD/crowdproperty-extension.git
+   ```
+
+   2. Or, download latest zip (https://github.com/IJMacD/crowdproperty-extension/archive/refs/heads/master.zip)
+   and extract.
+2. Go to [chrome://extensions/](chrome://extensions/)
+3. Click **Load Unpacked**
+4. Select the directory you extracted the extension into.
+
+
 ## Additional Charts
 
 Some charts have been added and others improved.
