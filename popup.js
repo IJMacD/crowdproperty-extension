@@ -301,7 +301,7 @@ getCurrentTab().then((tab) => {
 
 /**
  * @param {Message[]} messages
- * @param {string} format
+ * @param {"eml"|"csv"|"mbox"} format
  * @param {boolean} zipped
  */
 function downloadMessages(messages, format, zipped) {

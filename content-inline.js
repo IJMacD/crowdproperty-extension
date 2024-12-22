@@ -642,11 +642,11 @@ const sankeyDiv = document.getElementById("sankey");
 const sankeyStyle = document.createElement("style");
 sankeyStyle.innerHTML = `
 #sankey g.highcharts-series.highcharts-series-0.highcharts-sankey-series.highcharts-tracker {
-  transform: translate(790px, 53px) scale(-1, 1);
+  transform: translate(99%, 50px) scale(-1, 1);
 }
 
 #sankey g.highcharts-data-labels.highcharts-series-0.highcharts-sankey-series.highcharts-tracker {
-  transform: translate(790px, 53px) scale(-1, 1);
+  transform: translate(99%, 50px) scale(-1, 1);
 }
 
 #sankey g.highcharts-label.highcharts-data-label text {
@@ -736,10 +736,11 @@ function showSankey() {
     for (let i = 0; i < deposits.length; i++) {
       const year = deposits[i].year;
 
-      const target =
-        i === deposits.length - 1
-          ? "Current Balance"
-          : `${year + 1} Opening Balance`;
+      const isCurrentBalance = i === deposits.length - 1;
+
+      const target = isCurrentBalance
+        ? "Current Balance"
+        : `${year + 1} Opening Balance`;
 
       const withdrawalsThisYear =
         -withdrawals.find((w) => w.year === year)?.amount || 0;
@@ -748,10 +749,23 @@ function showSankey() {
       const netDepositsThisYear = deposits[i].amount - withdrawalsThisYear;
 
       if (i > 0) {
-        const transferredForward =
+        let transferredForward =
           netDepositsThisYear < 0
             ? currentBalance + netDepositsThisYear
             : currentBalance;
+
+        // Include all losses in current balance because we don't have any data
+        // to be able to break down by year.
+        if (totalLosses > 0 && isCurrentBalance) {
+          transferredForward -= totalLosses;
+
+          data.push([
+            `${year} Opening Balance`,
+            `Losses`,
+            totalLosses,
+            redGradient,
+          ]);
+        }
 
         data.push([
           `${year} Opening Balance`,
@@ -821,6 +835,10 @@ function showSankey() {
       "Current Balance",
       ...withdrawalNodes,
     ]);
+
+    if (totalLosses > 0) {
+      nodeIDs.add("Losses");
+    }
 
     function draw() {
       Highcharts.chart(
