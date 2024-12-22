@@ -1,9 +1,12 @@
-/** @typedef {import("highcharts")} highcharts */
-
 // Add sankey module needed later
 const s = document.createElement("script");
 s.src = "https://unpkg.com/highcharts@9.1.2/modules/sankey.js";
 document.head.append(s);
+
+/********************************
+ * Current Portfolio & Payback
+ ********************************/
+//#region Current Portfolio & Payback
 
 // Re-order chart categories
 function reorderCapitalChart() {
@@ -12,7 +15,7 @@ function reorderCapitalChart() {
   );
 
   if (!capitalChartContainer) {
-    throw Error("Highchart not ready");
+    throw Error("Highcharts not ready");
   }
 
   const chart = Highcharts.charts.find(
@@ -20,7 +23,7 @@ function reorderCapitalChart() {
   );
 
   if (!chart) {
-    throw Error("Highchart not ready");
+    throw Error("Highcharts not ready");
   }
 
   var newOrder = [
@@ -50,23 +53,40 @@ function reorderCapitalChart() {
   var d2 = newOrder
     .map((l) => d.find((v) => v.category === l))
     .filter((x) => x)
-    .map((d) => {
-      const color = d.category.includes("Overdue") ? overdueColour : d.color;
-      const dataLabelsColour =
-        d.y < 0 && d.category != "Balance"
-          ? { style: { color: "white" } }
-          : void 0;
-      return {
-        name: d.name,
-        y: d.y,
-        color,
-        borderColor: d.borderColor,
-        dataLabels: dataLabelsColour,
-        isIntermediateSum: d.isIntermediateSum,
-      };
-    });
+    .map(
+      (
+        /** @type {import("highcharts").Point&{borderColor:String,isIntermediateSum:Boolean}} */ d
+      ) => {
+        const color =
+          typeof d.category === "string" && d.category.includes("Overdue")
+            ? overdueColour
+            : d.color;
+        const dataLabelsColour =
+          d.y < 0 && d.category != "Balance"
+            ? { style: { color: "white" } }
+            : void 0;
+
+        return {
+          name: d.name,
+          y: d.y,
+          color,
+          borderColor: d.borderColor,
+          dataLabels: dataLabelsColour,
+          isIntermediateSum: d.isIntermediateSum,
+        };
+      }
+    );
   chart.update(
-    { xAxis: { categories: newOrder }, series: [{ name: "Value", data: d2 }] },
+    {
+      xAxis: { categories: newOrder },
+      series: [
+        {
+          name: "Value",
+          data: d2,
+          type: undefined,
+        },
+      ],
+    },
     true
   );
 }
@@ -84,22 +104,92 @@ try {
     }
   }, 5000);
 }
+//#endregion
 
+//#region Risk Banner
 // Hide Risk Banner
-document.querySelector(".footerisk").style.display = "none";
+/** @type {HTMLElement} */
+const riskBanner = document.querySelector(".footerisk");
+riskBanner.style.display = "none";
+//#endregion
 
 const formatter = Intl.NumberFormat(["en-GB"], {
   style: "currency",
   currency: "GBP",
 });
 
+const totalPortfolioValue = parseMoney(
+  document.querySelector(".bg-white h4:nth-child(2)").textContent
+);
+
+const availableCashValue = parseMoney(
+  document.querySelector(".bg-white:nth-child(3) h4:nth-child(2)").textContent
+);
+
+/************************
+ * Overview - History
+ ************************/
+//#region Overview - History
+
+// Highlight interest cell
 const overviewCard = document.querySelectorAll(".material-card")[1];
 /** @type {HTMLElement} */
 const interestCell = overviewCard.querySelector(
   "tr:nth-child(4) td:nth-child(2)"
 );
-interestCell.style = "font-weight: bolder; color: darkgreen; font-size: 1.1em;";
+interestCell.style.cssText =
+  "font-weight: bolder; color: darkgreen; font-size: 1.1em;";
 
+// Show losses/net gains
+const totalLent = parseMoney(
+  overviewCard.querySelector("tr:nth-child(2) td:nth-child(2)").textContent
+);
+const totalPaidBack = parseMoney(
+  overviewCard.querySelector("tr:nth-child(3) td:nth-child(2)").textContent
+);
+const totalInterest = parseMoney(
+  overviewCard.querySelector("tr:nth-child(4) td:nth-child(2)").textContent
+);
+const totalActive = parseMoney(
+  overviewCard.querySelector("tr:nth-child(5) td:nth-child(2)").textContent
+);
+
+const totalLosses = totalLent - totalActive - totalPaidBack;
+const netGains = totalInterest - totalLosses;
+const netDeposits =
+  totalLent - totalActive - totalPaidBack + totalPortfolioValue - totalInterest;
+
+const lossesRow = document.createElement("tr");
+lossesRow.innerHTML = `<td>Total Losses</td>
+<td class="text-right" style="font-weight: bolder; color: Crimson; font-size: 1.1em;">${formatter.format(
+  totalLosses
+)}</td>`;
+
+overviewCard.querySelector("tbody").append(lossesRow);
+const netRow = document.createElement("tr");
+netRow.innerHTML = `<td>Net Gains</td>
+<td class="text-right" style="font-weight: bolder; font-size: 1.1em;">${formatter.format(
+  netGains
+)}</td>`;
+overviewCard.querySelector("tbody").append(netRow);
+
+const netDepositsRow = document.createElement("tr");
+netDepositsRow.innerHTML = `<td>Net Deposits</td>
+<td class="text-right"">${formatter.format(netDeposits)}</td>`;
+overviewCard
+  .querySelector("tbody")
+  .insertBefore(netDepositsRow, overviewCard.querySelector("tr:nth-child(2)"));
+
+const netDepositsKey = document.createElement("p");
+netDepositsKey.className = "small px-4 mt-2";
+netDepositsKey.innerHTML = `<strong>Net Deposits</strong> - Calculated as: Total Deposits &minus; Total Withdrawals`;
+overviewCard.parentElement.append(netDepositsKey);
+//#endregion
+
+/***************************
+ * Overview - Payback*
+ ***************************/
+//#region Overview - Payback*
 // Show total outstanding capital
 const capitalRows = document.querySelectorAll(
   "#capital_graph + section + section tr"
@@ -124,9 +214,20 @@ tr.innerHTML = `<td colspan="2" class="text-right"><b>Total Overdue &nbsp;&nbsp;
 )}</b></td>`;
 totalRow.parentElement?.insertBefore(tr, totalRow);
 
-const totalActiveLoans = parseFloat(
-  totalRow.textContent.replace(/[^\d.]/g, "")
-);
+const totalActiveLoans = parseMoney(totalRow.textContent);
+
+/**
+ * @param {string} text
+ */
+function parseMoney(text) {
+  return parseFloat(text.replace(/[^\d.]/g, ""));
+}
+//#endregion
+
+/*********************
+ * Interest - Adjusted
+ *********************/
+//#region Interest - Adjusted
 
 // Calculate Outstanding Interest
 let lastMode = "";
@@ -134,22 +235,6 @@ let overdueCount = 0;
 let activeCount = 0;
 let overdueInterest = 0;
 let outstandingInterest = 0;
-
-const totalPortfolioValue = parseFloat(
-  document
-    .querySelector(".bg-white h4:nth-child(2)")
-    .textContent.trim()
-    .substring(1)
-    .replace(",", "")
-);
-
-const availableCashValue = parseFloat(
-  document
-    .querySelector(".bg-white:nth-child(3) h4:nth-child(2)")
-    .textContent.trim()
-    .substring(1)
-    .replace(",", "")
-);
 
 const pendingAmount =
   totalPortfolioValue - availableCashValue - totalActiveLoans;
@@ -184,6 +269,12 @@ if (el) {
 const overdueInterestP = document.getElementById("odi");
 const outstandingInterestP = document.getElementById("osi");
 const realPortfolioValueP = document.getElementById("tpvc");
+//#endregion
+
+/********************
+ * Capital Breakdown
+ ********************/
+//#region Capital Breakdown
 
 const pieCard = document.createElement("div");
 pieCard.classList.add("material-card");
@@ -239,6 +330,7 @@ function showPie() {
     series: [
       {
         name: "Capital",
+        type: undefined,
         colorByPoint: true,
         data: [
           {
@@ -290,8 +382,15 @@ function showPie() {
     ],
   });
 }
+//#endregion
+
+/*******************
+ * Loan Portfolio
+ *******************/
+//#region Loan Portfolio
 
 // Re-define dataTables function
+/** @this {{project: string, loan: string}} */
 window.loadDatatable = function (a) {
   var t,
     e = $("#".concat(a, ".datatable-sort")),
@@ -341,6 +440,7 @@ window.loadDatatable = function (a) {
           },
         },
         {
+          // @ts-ignore
           data: {
             display: "loan_start_display",
             sort: "loan_start_timestamp",
@@ -350,6 +450,7 @@ window.loadDatatable = function (a) {
           },
         },
         {
+          // @ts-ignore
           data: {
             display: "loan_end_display",
             sort: "loan_end_timestamp",
@@ -411,7 +512,7 @@ window.loadDatatable = function (a) {
             }
 
             if (r < 1) {
-              // Optimistic estimation includeing 2% overdue bonus
+              // Optimistic estimation including 2% overdue bonus
               const z = (1 - r) * w + (x * d * i) / 365;
               out.push(
                 `<span style="color:red" title="Outstanding (Expected)">${formatter.format(
@@ -513,6 +614,12 @@ function formatDuration(delta) {
 function formatDate(d) {
   return d.toISOString().substring(0, 10).replace(/-/g, "\u2011");
 }
+//#endregion
+
+/***************
+ * Capital Flow
+ ***************/
+//#region Capital Flow
 
 // Add Sankey card and styles
 const sankeyCard = document.createElement("div");
@@ -547,6 +654,7 @@ sankeyStyle.innerHTML = `
 }`;
 document.body.append(sankeyStyle);
 
+/** @type {import("highcharts").GradientColorObject} */
 const greyGradient = {
   linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
   stops: [
@@ -554,6 +662,7 @@ const greyGradient = {
     [1, "#3C5F7A"],
   ],
 };
+/** @type {import("highcharts").GradientColorObject} */
 const greenGradient = {
   linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
   stops: [
@@ -561,6 +670,7 @@ const greenGradient = {
     [1, "#11998e"],
   ],
 };
+/** @type {import("highcharts").GradientColorObject} */
 const redGradient = {
   linearGradient: { x1: 0, x2: 0, y1: 0, y2: 1 },
   stops: [
@@ -713,36 +823,42 @@ function showSankey() {
     ]);
 
     function draw() {
-      Highcharts.chart(sankeyDiv, {
-        chart: {
-          inverted: false,
-          centerInCategory: true,
-        },
-        title: {
-          text: "Capital Flow",
-        },
-        accessibility: {
-          point: {
-            valueDescriptionFormat:
-              "{index}. {point.from} to {point.to}, £{point.weight:,.2f}.",
+      Highcharts.chart(
+        sankeyDiv,
+        {
+          chart: {
+            inverted: false,
+            // @ts-ignore
+            centerInCategory: true,
+          },
+          title: {
+            text: "Capital Flow",
+          },
+          accessibility: {
+            point: {
+              valueDescriptionFormat:
+                "{index}. {point.from} to {point.to}, £{point.weight:,.2f}.",
+            },
+          },
+          series: [
+            {
+              colorByPoint: true,
+              // Note to/from are reversed
+              keys: ["to", "from", "weight", "color"],
+              data,
+              type: "sankey",
+              name: "Capital",
+              nodes: [...nodeIDs].map((id) => ({ color: greenGradient, id })),
+            },
+          ],
+          tooltip: {
+            // @ts-ignore
+            nodeFormat: "£{point.sum:,.2f}.",
+            pointFormat: "{point.to} → {point.from} £{point.weight:,.2f}.",
           },
         },
-        series: [
-          {
-            colorByPoint: true,
-            // Note to/from are reversed
-            keys: ["to", "from", "weight", "color"],
-            data,
-            type: "sankey",
-            name: "Capital",
-            nodes: [...nodeIDs].map((id) => ({ color: greenGradient, id })),
-          },
-        ],
-        tooltip: {
-          nodeFormat: "£{point.sum:,.2f}.",
-          pointFormat: "{point.to} → {point.from} £{point.weight:,.2f}.",
-        },
-      });
+        null
+      );
     }
 
     try {
@@ -753,3 +869,4 @@ function showSankey() {
     }
   });
 }
+//#endregion

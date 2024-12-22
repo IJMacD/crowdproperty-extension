@@ -16,6 +16,14 @@ A 3rd party extension to add some extra features to the Crowd Property website.
 3. Click **Load Unpacked**
 4. Select the directory you extracted the extension into.
 
+## Additional Tables
+
+### Overview - History
+
+![Overview - History Table](images/history.png)
+
+The Overview - History table has extra rows calculating and highlighting some
+additional important information.
 
 ## Additional Charts
 

@@ -1,7 +1,10 @@
 {
   "type": "module",
   "devDependencies": {
+    "@types/datatables.net": "^1.12.3",
     "@types/highcharts": "^7.0.0",
+    "@types/jquery": "^3.5.32",
+    "@types/jszip": "^3.4.1",
     "chrome-types": "^0.1.171"
   }
 }
