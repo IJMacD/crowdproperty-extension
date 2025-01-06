@@ -3,9 +3,29 @@ const s = document.createElement("script");
 s.src = "https://unpkg.com/highcharts@9.1.2/modules/sankey.js";
 document.head.append(s);
 
-/********************************
+/*
+ * ******************************
  * Current Portfolio & Payback
- ********************************/
+ * ******************************/
+
+/**
+ * @param {() => void} fn
+ */
+function waitForHighcharts(fn) {
+  try {
+    fn();
+  } catch (e) {
+    console.debug("Chart not ready for re-drawing. Retrying in 5 sec");
+    setTimeout(() => {
+      try {
+        fn();
+      } catch (e) {
+        console.debug("Chart not ready for re-drawing. Retrying after 10 sec");
+        setTimeout(() => fn(), 5000);
+      }
+    }, 5000);
+  }
+}
 //#region Current Portfolio & Payback
 
 // Re-order chart categories
@@ -91,19 +111,7 @@ function reorderCapitalChart() {
   );
 }
 
-try {
-  reorderCapitalChart();
-} catch (e) {
-  console.debug("Chart not ready for re-drawing. Retrying in 5 sec");
-  setTimeout(() => {
-    try {
-      reorderCapitalChart();
-    } catch (e) {
-      console.debug("Chart not ready for re-drawing. Retrying after 10 sec");
-      setTimeout(() => reorderCapitalChart(), 5000);
-    }
-  }, 5000);
-}
+waitForHighcharts(reorderCapitalChart);
 //#endregion
 
 //#region Risk Banner
@@ -184,6 +192,163 @@ const netDepositsKey = document.createElement("p");
 netDepositsKey.className = "small px-4 mt-2";
 netDepositsKey.innerHTML = `<strong>Net Deposits</strong> - Calculated as: Total Deposits &minus; Total Withdrawals`;
 overviewCard.parentElement.append(netDepositsKey);
+//#endregion
+
+//#region Portfolio Performance
+function addLossesToPerformanceChart() {
+  const portfolioPerformanceChartContainer = document.querySelector(
+    "#repayment-graph .highcharts-container"
+  );
+
+  const chart = Highcharts.charts.find(
+    (chart) => chart.container === portfolioPerformanceChartContainer
+  );
+
+  if (!chart) {
+    throw Error("Highcharts not ready");
+  }
+
+  // Recreate chart using data we already have
+  chart.update(
+    {
+      xAxis: {
+        categories: [
+          "Total Lent",
+          "Total Paid Back",
+          "Total Active",
+          "Total Losses",
+        ],
+        labels: {},
+      },
+      series: [
+        {
+          name: "Total Lent",
+          type: "waterfall",
+          data: [totalLent, null, null, null],
+          color: {
+            linearGradient: {
+              x1: 0,
+              x2: 0,
+              y1: 0,
+              y2: 1,
+            },
+            stops: [
+              [0, "#294064"],
+              [1, "#0C1C36"],
+            ],
+          },
+          borderColor: null,
+        },
+        {
+          type: "waterfall",
+          data: [null, -totalInterest, null, null],
+          showInLegend: !1,
+          color: "transparent",
+          borderColor: null,
+          borderWidth: 0,
+          dataLabels: {
+            enabled: !1,
+          },
+          enableMouseTracking: !1,
+        },
+        {
+          name: "Total Capital Paid Back",
+          type: "waterfall",
+          data: [null, -totalPaidBack, null, null],
+          color: {
+            linearGradient: {
+              x1: 0,
+              x2: 0,
+              y1: 0,
+              y2: 1,
+            },
+            stops: [
+              [0, "#FE237F"],
+              [1, "#fd5c9d"],
+            ],
+          },
+          borderColor: null,
+        },
+        {
+          name: "Total Interest Paid Back",
+          type: "waterfall",
+          data: [null, totalInterest, null, null],
+          color: {
+            linearGradient: {
+              x1: 0,
+              x2: 0,
+              y1: 0,
+              y2: 1,
+            },
+            stops: [
+              [0, "#fb78b3"],
+              [1, "#ff98c1"],
+            ],
+          },
+          borderColor: null,
+        },
+        {
+          name: "Loans Pending Start",
+          type: "waterfall",
+          data: [null, null, -pendingAmount, null],
+          color: {
+            linearGradient: {
+              x1: 0,
+              x2: 0,
+              y1: 0,
+              y2: 1,
+            },
+            stops: [
+              [0, "#00b13f"],
+              [1, "#00ff52"],
+            ],
+          },
+          borderColor: null,
+        },
+        {
+          name: "Total Active",
+          type: "waterfall",
+          data: [null, null, -totalActive + pendingAmount, null],
+          color: {
+            linearGradient: {
+              x1: 0,
+              x2: 0,
+              y1: 0,
+              y2: 1,
+            },
+            stops: [
+              [0, "#2EBE64"],
+              [1, "#89F4B1"],
+            ],
+          },
+          borderColor: null,
+        },
+        {
+          name: "Total Losses",
+          type: "waterfall",
+          data: [null, null, null, -totalLosses],
+          color: {
+            linearGradient: {
+              x1: 0,
+              x2: 0,
+              y1: 0,
+              y2: 1,
+            },
+            stops: [
+              [0, "#294064"],
+              [1, "#0C1C36"],
+            ],
+          },
+          borderColor: null,
+        },
+      ],
+    },
+    true,
+    true
+  );
+}
+waitForHighcharts(addLossesToPerformanceChart);
+
 //#endregion
 
 /***************************
