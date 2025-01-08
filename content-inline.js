@@ -134,6 +134,19 @@ const availableCashValue = parseMoney(
   document.querySelector(".bg-white:nth-child(3) h4:nth-child(2)").textContent
 );
 
+const accountCash = parseMoney(
+  document
+    .getElementById("capital_graph")
+    .nextElementSibling.querySelector("td:nth-child(2)").textContent
+);
+
+const pledgedAmount = parseMoney(
+  document
+    .getElementById("capital_graph")
+    .nextElementSibling.querySelector("tr:nth-child(3) td:nth-child(2)")
+    .textContent
+);
+
 /************************
  * Overview - History
  ************************/
@@ -162,10 +175,14 @@ const totalActive = parseMoney(
   overviewCard.querySelector("tr:nth-child(5) td:nth-child(2)").textContent
 );
 
-const totalLosses = totalLent - totalActive - totalPaidBack;
+const totalLosses = totalLent - (totalActive + pledgedAmount) - totalPaidBack;
 const netGains = totalInterest - totalLosses;
 const netDeposits =
-  totalLent - totalActive - totalPaidBack + totalPortfolioValue - totalInterest;
+  totalLent -
+  (totalActive + pledgedAmount) -
+  totalPaidBack +
+  totalPortfolioValue -
+  totalInterest;
 
 const lossesRow = document.createElement("tr");
 lossesRow.innerHTML = `<td>Total Losses</td>
@@ -385,7 +402,7 @@ const totalActiveLoans = parseMoney(totalRow.textContent);
  * @param {string} text
  */
 function parseMoney(text) {
-  return parseFloat(text.replace(/[^\d.]/g, ""));
+  return parseFloat(text.replace(/[^-\d.]/g, ""));
 }
 //#endregion
 
