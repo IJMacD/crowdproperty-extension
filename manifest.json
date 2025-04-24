@@ -17,7 +17,7 @@
     {
       "js": ["content.js"],
       "matches": [
-        "https://www.crowdproperty.com/account/dashboard"
+        "https://investor.crowdproperty.com/account/dashboard"
       ]
     }
   ],

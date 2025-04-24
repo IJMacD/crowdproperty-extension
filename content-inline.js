@@ -863,7 +863,7 @@ const redGradient = {
 
 function updateSankey() {
   fetch(
-    "https://www.crowdproperty.com/account/portfolio/all/transactions-export/all"
+    "https://investor.crowdproperty.com/account/portfolio/all/transactions-export/all"
   )
     .then((r) => r.text())
     .then((csv) => {
